@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
-# COLOQUE SUA CHAVE AQUI (APENAS TESTE)
-API_KEY = "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"
+# ⚠️ CHAVE DIRETO NO CÓDIGO (apenas para testes)
+API_KEY = "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"
 MODEL = "meta-llama/llama-3-8b-instruct"
 
 app = FastAPI(title="VirTEAi Chatbot API")
@@ -12,7 +12,7 @@ app = FastAPI(title="VirTEAi Chatbot API")
 # Libera acesso para frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # depois você restringe para seu domínio
+    allow_origins=["*"],  # depois restrinja para seu domínio
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,6 +29,10 @@ def root():
 
 @app.post("/chat")
 def chat(request: ChatRequest):
+
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Mensagem vazia.")
+
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     headers = {
@@ -36,50 +40,58 @@ def chat(request: ChatRequest):
         "Content-Type": "application/json"
     }
 
+    system_prompt = """
+Você é um assistente educativo, acolhedor e informativo da VirTEAi.
+
+REGRAS IMPORTANTES:
+- Sempre responda no mesmo idioma da pergunta do usuário.
+- Nunca realize diagnósticos.
+- Sempre deixe claro que suas respostas não substituem avaliação de profissionais de saúde.
+
+Sobre TEA:
+Responda dúvidas gerais sobre o Transtorno do Espectro Autista (TEA)
+de forma clara, respeitosa, empática e baseada em informações científicas.
+
+Sobre a VirTEAi:
+A VirTEAi é uma plataforma tecnológica que utiliza realidade virtual
+e tecnologias como eye tracking para criar simulações imersivas
+que auxiliam profissionais especializados na coleta de dados
+comportamentais relacionados ao TEA.
+
+A plataforma não realiza diagnóstico,
+mas apoia profissionais na análise de padrões de atenção e interação.
+
+Se perguntarem sobre diagnóstico individual,
+oriente procurar profissional especializado.
+"""
+
     data = {
         "model": MODEL,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Você é um assistente educativo, acolhedor e informativo da VirTEAi. "
-        "Responda dúvidas gerais sobre o Transtorno do Espectro Autista (TEA) "
-        "de forma clara, respeitosa, empática e baseada em informações científicas. "
-        "Nunca realize diagnósticos e sempre deixe claro que suas respostas "
-        "não substituem avaliação de profissionais de saúde.\n\n"
-
-        "Sobre a VirTEAi:\n"
-        "A VirTEAi é uma plataforma tecnológica que utiliza realidade virtual "
-        "e tecnologias como eye tracking para criar simulações imersivas "
-        "que auxiliam profissionais especializados na coleta de dados "
-        "comportamentais relacionados ao TEA. "
-        "A plataforma não realiza diagnóstico, mas apoia profissionais "
-        "na análise de padrões de atenção e interação.\n\n"
-
-        "Se perguntarem sobre a VirTEAi, explique de forma clara o propósito "
-        "da plataforma, sua tecnologia e seu foco em apoio profissional. "
-        "Se perguntarem sobre diagnóstico individual, oriente procurar "
-        "profissional especializado."
-                )
-            },
-            {
-                "role": "user",
-                "content": request.message
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request.message}
         ],
-        "temperature": 0.5
+        "temperature": 0.4,
+        "max_tokens": 300
     }
 
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        result = response.json()
 
         if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=result)
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=response.json()
+            )
+
+        result = response.json()
 
         return {
             "response": result["choices"][0]["message"]["content"]
         }
+
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Timeout ao conectar com o modelo.")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
